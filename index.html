@@ -453,37 +453,50 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 </div>
 
 <script>
-const API = 'https://script.google.com/macros/s/AKfycbzmVmbLnV9Nxa3kEqkLNODqf3BnrcBQU7M5JxUi6sE-oUzoV6Dbfg-lTVlvufAQKTcGAA/exec';
+const API = 'https://script.google.com/macros/s/AKfycbyCseztr7TR9EOseSp_f_1K07DxnD8ioXuQnhQMuQy60B5QN1MgD7-V_gUS1Qay58G42A/exec';
 
 // ── GOOGLE SHEETS API ────────────────────
 async function apiGet(action) {
   try {
     const r = await fetch(`${API}?action=${action}&t=${Date.now()}`);
-    return await r.json();
-  } catch(e) { return []; }
+    const text = await r.text();
+    return JSON.parse(text);
+  } catch(e) { console.error('apiGet error:', e); return []; }
 }
 
 async function apiSave(action, data) {
   try {
-    const encoded = encodeURIComponent(JSON.stringify(data));
-    await fetch(`${API}?action=${action}&data=${encoded}&t=${Date.now()}`);
-  } catch(e) { console.error(e); }
+    // Usamos no-cors para evitar problemas de CORS con Apps Script
+    await fetch(API, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type': 'text/plain'},
+      body: JSON.stringify({action, data})
+    });
+  } catch(e) { console.error('apiSave error:', e); }
 }
 
 // Serializar productos a filas para Sheets
 function productosToRows(arr) {
-  if (!arr.length) return [['id','nombre','precio','stock','stockMin','desc','img']];
-  return [['id','nombre','precio','stock','stockMin','desc','img'],
-    ...arr.map(p => [p.id, p.nombre, p.precio, p.stock, p.stockMin||5, p.desc||'', p.img||''])];
+  if (!arr.length) return [['id','nombre','precio','stock','stockMin','desc']];
+  // No guardamos imágenes en Sheets (son muy pesadas), se guardan en localStorage
+  return [['id','nombre','precio','stock','stockMin','desc'],
+    ...arr.map(p => [p.id, p.nombre, p.precio, p.stock, p.stockMin||5, p.desc||''])];
 }
 
 function rowsToProductos(rows) {
   if (!rows || rows.length < 2) return [];
+  // Recuperamos imágenes desde localStorage
+  const imgs = lsLoad('fr_imgs') || {};
   return rows.slice(1).map(r => ({
-    id: r[0], nombre: r[1], precio: Number(r[2]), stock: Number(r[3]),
-    stockMin: Number(r[4])||5, desc: r[5]||'', img: r[6]||null
-  })).filter(p => p.id);
+    id: String(r[0]), nombre: String(r[1]), precio: Number(r[2]), stock: Number(r[3]),
+    stockMin: Number(r[4])||5, desc: String(r[5]||''), img: imgs[String(r[0])] || null
+  })).filter(p => p.id && p.nombre);
 }
+
+// localStorage solo para imágenes
+function lsSave(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function lsLoad(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}}
 
 // Serializar cotizaciones a filas para Sheets
 function cotizacionesToRows(arr) {
@@ -502,18 +515,34 @@ function rowsToCotizaciones(rows) {
 }
 
 async function saveProductos() {
-  await apiSave('saveProductos', productosToRows(productos));
+  try {
+    await apiSave('saveProductos', productosToRows(productos));
+  } catch(e) { console.error('Error guardando productos:', e); }
 }
 
 async function saveCotizaciones() {
-  await apiSave('saveCotizaciones', cotizacionesToRows(cotizaciones));
+  try {
+    await apiSave('saveCotizaciones', cotizacionesToRows(cotizaciones));
+  } catch(e) { console.error('Error guardando cotizaciones:', e); }
 }
 
 async function cargarDatos() {
   mostrarCargando(true);
-  const [rP, rC] = await Promise.all([apiGet('getProductos'), apiGet('getCotizaciones')]);
-  productos = rowsToProductos(rP);
-  cotizaciones = rowsToCotizaciones(rC);
+  try {
+    const [rP, rC] = await Promise.all([
+      apiGet('getProductos'),
+      apiGet('getCotizaciones')
+    ]);
+    const prod = rowsToProductos(rP);
+    const cots = rowsToCotizaciones(rC);
+    if (prod.length > 0 || (Array.isArray(rP) && rP.length > 0)) {
+      productos = prod;
+      cotizaciones = cots;
+    }
+  } catch(e) {
+    console.error('Error cargando datos:', e);
+    toast('⚠️ Error conectando con Google Sheets');
+  }
   mostrarCargando(false);
   renderProductos();
 }
