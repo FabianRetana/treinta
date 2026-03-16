@@ -453,11 +453,88 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 </div>
 
 <script>
-function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
-function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
+const API = 'https://script.google.com/macros/s/AKfycbzmVmbLnV9Nxa3kEqkLNODqf3BnrcBQU7M5JxUi6sE-oUzoV6Dbfg-lTVlvufAQKTcGAA/exec';
 
-let productos=load('fr_productos',[]);
-let cotizaciones=load('fr_cotizaciones',[]);
+// ── GOOGLE SHEETS API ────────────────────
+async function apiGet(action) {
+  try {
+    const r = await fetch(`${API}?action=${action}`);
+    return await r.json();
+  } catch(e) { return []; }
+}
+
+async function apiPost(action, data) {
+  try {
+    await fetch(API, {
+      method: 'POST',
+      body: JSON.stringify({action, data}),
+      headers: {'Content-Type': 'application/json'}
+    });
+  } catch(e) { console.error(e); }
+}
+
+// Serializar productos a filas para Sheets
+function productosToRows(arr) {
+  if (!arr.length) return [['id','nombre','precio','stock','stockMin','desc','img']];
+  return [['id','nombre','precio','stock','stockMin','desc','img'],
+    ...arr.map(p => [p.id, p.nombre, p.precio, p.stock, p.stockMin||5, p.desc||'', p.img||''])];
+}
+
+function rowsToProductos(rows) {
+  if (!rows || rows.length < 2) return [];
+  return rows.slice(1).map(r => ({
+    id: r[0], nombre: r[1], precio: Number(r[2]), stock: Number(r[3]),
+    stockMin: Number(r[4])||5, desc: r[5]||'', img: r[6]||null
+  })).filter(p => p.id);
+}
+
+// Serializar cotizaciones a filas para Sheets
+function cotizacionesToRows(arr) {
+  if (!arr.length) return [['id','num','cliente','items','total','fecha','estado']];
+  return [['id','num','cliente','items','total','fecha','estado'],
+    ...arr.map(c => [c.id, c.num, c.cliente, JSON.stringify(c.items), c.total, c.fecha, c.estado])];
+}
+
+function rowsToCotizaciones(rows) {
+  if (!rows || rows.length < 2) return [];
+  return rows.slice(1).map(r => ({
+    id: r[0], num: r[1], cliente: r[2],
+    items: (() => { try { return JSON.parse(r[3]); } catch(e) { return []; } })(),
+    total: Number(r[4]), fecha: r[5], estado: r[6]
+  })).filter(c => c.id);
+}
+
+async function saveProductos() {
+  await apiPost('saveProductos', productosToRows(productos));
+}
+
+async function saveCotizaciones() {
+  await apiPost('saveCotizaciones', cotizacionesToRows(cotizaciones));
+}
+
+async function cargarDatos() {
+  mostrarCargando(true);
+  const [rP, rC] = await Promise.all([apiGet('getProductos'), apiGet('getCotizaciones')]);
+  productos = rowsToProductos(rP);
+  cotizaciones = rowsToCotizaciones(rC);
+  mostrarCargando(false);
+  renderProductos();
+}
+
+function mostrarCargando(show) {
+  let el = document.getElementById('loadingOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadingOverlay';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,0.9);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;';
+    el.innerHTML = '<div style="font-size:36px">⏳</div><div style="font-size:15px;font-weight:600;color:var(--text2)">Cargando datos...</div>';
+    document.body.appendChild(el);
+  }
+  el.style.display = show ? 'flex' : 'none';
+}
+
+let productos = [];
+let cotizaciones = [];
 let editId=null, imgData=null, cotSel={};
 
 const fmt=n=>'₡'+Math.round(n).toLocaleString('es-CR');
@@ -532,14 +609,14 @@ function guardarProducto(){
     productos.push({id:'p_'+Date.now(),nombre,precio,stock,desc,img:imgData||null,stockMin:5});
     toast('✅ Producto añadido');
   }
-  save('fr_productos',productos);
+  saveProductos();
   cerrarModal('modalProducto');
   renderProductos();
 }
 
 function eliminarProducto(){
   productos=productos.filter(p=>p.id!==editId);
-  save('fr_productos',productos);
+  saveProductos();
   cerrarModal('modalProducto');
   renderProductos();
   toast('🗑 Producto eliminado');
@@ -580,7 +657,7 @@ function ajustarStock(id){
   if(n===null)return;
   const v=parseInt(n);
   if(isNaN(v)||v<0){toast('⚠️ Ingresa un número válido');return;}
-  p.stock=v;save('fr_productos',productos);renderProductos();
+  p.stock=v;saveProductos();renderProductos();
   toast(`📦 Stock actualizado: ${v} uds`);
 }
 
@@ -633,7 +710,7 @@ function guardarCotizacion(){
   if(!items.length){toast('⚠️ Selecciona al menos un producto');return;}
   cotizaciones.unshift({id:'c_'+Date.now(),num,cliente,items,total,
     fecha:new Date().toLocaleDateString('es-CR',{day:'numeric',month:'short',year:'numeric'}),estado:'pendiente'});
-  save('fr_cotizaciones',cotizaciones);
+  saveCotizaciones();
   document.getElementById('cotCliente').value='';
   document.getElementById('cotNum').value='';
   cotSel={};renderCotizar();
@@ -684,13 +761,13 @@ function cambiarEstado(id,nuevo){
     const sinStock=c.items.filter(i=>{const p=productos.find(x=>x.id===i.id);return p&&p.stock<i.qty;}).map(i=>i.nombre);
     if(sinStock.length){toast(`⚠️ Sin stock: ${sinStock.join(', ')}`);return;}
     c.items.forEach(i=>{const p=productos.find(x=>x.id===i.id);if(p)p.stock=Math.max(0,p.stock-i.qty);});
-    save('fr_productos',productos);toast('✅ Aprobada · Stock actualizado');
+    saveProductos();toast('✅ Aprobada · Stock actualizado');
   }else if(nuevo==='pendiente'&&prev==='aprobada'){
     c.items.forEach(i=>{const p=productos.find(x=>x.id===i.id);if(p)p.stock+=i.qty;});
-    save('fr_productos',productos);toast('↩️ Reabierta · Stock restaurado');
+    saveProductos();toast('↩️ Reabierta · Stock restaurado');
   }else if(nuevo==='rechazada')toast('❌ Cotización rechazada');
   else if(nuevo==='pendiente')toast('↩️ Cotización reabierta');
-  c.estado=nuevo;save('fr_cotizaciones',cotizaciones);renderHistorial();
+  c.estado=nuevo;saveCotizaciones();renderHistorial();
 }
 
 function verDetalle(id){
@@ -710,7 +787,7 @@ function verDetalle(id){
   document.getElementById('modalDetalle').classList.add('open');
 }
 
-renderProductos();
+cargarDatos();
 </script>
 </body>
 </html>
