@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Stock FR">
 <meta name="theme-color" content="#f7f8fa">
-<title>Stock · Fabián Retana</title>
+<title>Stock · Mayela</title>
 <style>
 :root {
   --bg: #f7f8fa;
@@ -315,7 +315,7 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 <div class="header">
   <div class="header-inner">
     <div class="header-title" id="headerTitle">Mi <span>Stock</span></div>
-    <button class="header-action" id="headerAction" onclick="headerActionClick()" style="display:none">+</button>
+    <button class="header-action" id="headerAction" onclick="headerActionClick()">+</button>
   </div>
 </div>
 
@@ -325,7 +325,7 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
     <div class="welcome-banner">
       <div class="welcome-text">
         <div class="welcome-greeting">Bienvenido de nuevo</div>
-        <div class="welcome-name">Fabián Retana</div>
+        <div class="welcome-name">Mayela</div>
       </div>
       <div class="welcome-emoji">📦</div>
     </div>
@@ -471,7 +471,7 @@ function goPage(name,btn){
   const titles={inventario:'Mi <span style="color:var(--green)">Stock</span>',cotizar:'Nueva cotización',historial:'Historial'};
   document.getElementById('headerTitle').innerHTML=titles[name];
   const act=document.getElementById('headerAction');
-  act.style.display=name==='inventario'?'flex':'none';
+  act.style.display=name==='inventario'?'flex':'none'; if(name==='inventario')act.style.display='flex';
   if(name==='cotizar')renderCotizar();
   if(name==='historial')renderHistorial();
   if(name==='inventario')renderProductos();
