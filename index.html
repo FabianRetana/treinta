@@ -458,18 +458,15 @@ const API = 'https://script.google.com/macros/s/AKfycbzmVmbLnV9Nxa3kEqkLNODqf3Bn
 // ── GOOGLE SHEETS API ────────────────────
 async function apiGet(action) {
   try {
-    const r = await fetch(`${API}?action=${action}`);
+    const r = await fetch(`${API}?action=${action}&t=${Date.now()}`);
     return await r.json();
   } catch(e) { return []; }
 }
 
-async function apiPost(action, data) {
+async function apiSave(action, data) {
   try {
-    await fetch(API, {
-      method: 'POST',
-      body: JSON.stringify({action, data}),
-      headers: {'Content-Type': 'application/json'}
-    });
+    const encoded = encodeURIComponent(JSON.stringify(data));
+    await fetch(`${API}?action=${action}&data=${encoded}&t=${Date.now()}`);
   } catch(e) { console.error(e); }
 }
 
@@ -505,11 +502,11 @@ function rowsToCotizaciones(rows) {
 }
 
 async function saveProductos() {
-  await apiPost('saveProductos', productosToRows(productos));
+  await apiSave('saveProductos', productosToRows(productos));
 }
 
 async function saveCotizaciones() {
-  await apiPost('saveCotizaciones', cotizacionesToRows(cotizaciones));
+  await apiSave('saveCotizaciones', cotizacionesToRows(cotizaciones));
 }
 
 async function cargarDatos() {
