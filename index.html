@@ -765,24 +765,44 @@ function guardarCotizacion(){
 }
 
 // ── HISTORIAL ────────────────────────────
-// Meses fijos desde enero 2026 hasta el mes actual
+// Meses visibles: mes actual + siguiente + meses con cotizaciones
 function getMesesFijos(){
   const MESES=['ene.','feb.','mar.','abr.','may.','jun.','jul.','ago.','sep.','oct.','nov.','dic.'];
   const MESES_LABEL=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const hoy=new Date();
   const mesActual=hoy.getMonth();
   const anioActual=hoy.getFullYear();
-  const lista=[];
-  // Desde enero 2026 hasta el mes actual
-  let anio=2026, mes=0;
-  while(anio<anioActual||(anio===anioActual&&mes<=mesActual)){
-    lista.push({
-      value:`${MESES[mes]} ${String(anio).slice(2)}`,
-      label:`${MESES_LABEL[mes]} ${anio}`
-    });
-    mes++;if(mes>11){mes=0;anio++;}
-  }
-  return lista.reverse(); // más reciente primero
+
+  // Mes actual y siguiente siempre visibles
+  const fijos=new Set();
+  // Mes actual
+  fijos.add(`${MESES[mesActual]} ${String(anioActual).slice(2)}`);
+  // Mes siguiente
+  const mesSig=mesActual===11?0:mesActual+1;
+  const anioSig=mesActual===11?anioActual+1:anioActual;
+  fijos.add(`${MESES[mesSig]} ${String(anioSig).slice(2)}`);
+
+  // Meses con cotizaciones registradas
+  cotizaciones.forEach(c=>{
+    const key=parseMesCot(c.fecha);
+    if(key)fijos.add(key);
+  });
+
+  // Convertir a objetos con label legible, ordenar de más reciente a más antiguo
+  const lista=[...fijos].map(v=>{
+    // v tiene formato "mar. 26"
+    const parts=v.split(' ');
+    const mesAbr=parts[0];
+    const anio='20'+parts[1];
+    const mesIdx=MESES.indexOf(mesAbr);
+    return {
+      value:v,
+      label:mesIdx>=0?`${MESES_LABEL[mesIdx]} ${anio}`:v,
+      sort:parseInt(anio)*100+(mesIdx>=0?mesIdx:0)
+    };
+  }).sort((a,b)=>b.sort-a.sort);
+
+  return lista;
 }
 
 function parseMesCot(fecha){
