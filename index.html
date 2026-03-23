@@ -459,6 +459,7 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 const API = 'https://script.google.com/macros/s/AKfycby59TSm-rjPtcwkdtgBjkvtr62D3TZdrOcj-XqyIdgfJ_hpababKuGZEp2hwu3qiQrf/exec';
 
 // ── GOOGLE SHEETS API ────────────────────
+// Usamos solo GET para todo — Apps Script maneja GET sin problemas de CORS
 async function apiGet(action) {
   try {
     const r = await fetch(`${API}?action=${action}&t=${Date.now()}`);
@@ -469,13 +470,20 @@ async function apiGet(action) {
 
 async function apiSave(action, data) {
   try {
-    // Usamos no-cors para evitar problemas de CORS con Apps Script
-    await fetch(API, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {'Content-Type': 'text/plain'},
-      body: JSON.stringify({action, data})
-    });
+    // Dividimos los datos en chunks si es necesario y usamos GET con encode
+    const payload = encodeURIComponent(JSON.stringify(data));
+    // Apps Script acepta GET con parámetros
+    const url = `${API}?action=${action}&data=${payload}&t=${Date.now()}`;
+    // Si la URL es muy larga, usamos POST con text/plain (no-cors)
+    if(url.length > 8000) {
+      await fetch(API, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: `action=${action}&data=${payload}`
+      });
+    } else {
+      await fetch(url);
+    }
   } catch(e) { console.error('apiSave error:', e); }
 }
 
@@ -910,19 +918,84 @@ function eliminarCotizacion(id){
 
 function compartirWhatsapp(id){
   const c=cotizaciones.find(x=>x.id===id);if(!c)return;
-  const sep='━━━━━━━━━━━━━━━━━━━━━━━━';
-  const sep2='────────────────────────';
-  let txt='📋 *COTIZACIÓN '+c.num+'*\n'+sep+'\n';
-  txt+='📅 '+c.fecha+'\n👤 '+c.cliente+'\n\n';
-  txt+='*PRODUCTOS*\n'+sep2+'\n';
-  c.items.forEach(function(i){txt+='▸ '+i.nombre+' ×'+i.qty+'\n   '+fmt(i.precio*i.qty)+'\n';});
-  txt+='\n'+sep+'\n';
-  txt+='💰 *TOTAL: '+fmt(c.total)+'*\n'+sep+'\n\n';
-  txt+='✅ 1–2 rondas de ajustes sin costo adicional.\n';
-  txt+='💳 50% anticipo · 50% contra entrega.\n';
-  txt+='📆 Válida por 30 días.';
-  var url='https://wa.me/?text='+encodeURIComponent(txt);
-  window.open(url,'_blank');
+  // Crear elemento visual de la cotización para capturar como imagen
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;left:-9999px;top:0;width:360px;background:#fff;font-family:-apple-system,sans-serif;padding:0;border-radius:16px;overflow:hidden;';
+  const sLabel={'pendiente':'⏳ Pendiente','aprobada':'✅ Aprobada','rechazada':'❌ Rechazada'}[c.estado];
+  const itemsHtml=c.items.map(i=>`
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+      <span style="color:#333;">${i.nombre} <span style="color:#999">×${i.qty}</span></span>
+      <span style="font-weight:700;color:#111;">${fmt(i.precio*i.qty)}</span>
+    </div>`).join('');
+  el.innerHTML=`
+    <div style="background:linear-gradient(135deg,#00b96b,#00d084);padding:20px 24px;">
+      <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:4px;font-weight:600;letter-spacing:0.05em;">COTIZACIÓN</div>
+      <div style="font-size:26px;font-weight:800;color:white;">${c.num}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:6px;">👤 ${c.cliente} &nbsp;·&nbsp; 📅 ${c.fecha}</div>
+    </div>
+    <div style="padding:16px 20px;">
+      <div style="font-size:10px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Productos</div>
+      ${itemsHtml}
+      <div style="margin-top:14px;background:#f7f8fa;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:#666;font-weight:600;">Total</span>
+        <span style="font-size:22px;font-weight:800;color:#00b96b;">${fmt(c.total)}</span>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:#999;line-height:1.6;border-top:1px solid #f0f0f0;padding-top:12px;">
+        ✅ 1–2 rondas de ajustes sin costo adicional<br>
+        💳 50% anticipo · 50% contra entrega<br>
+        📆 Cotización válida por 30 días
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+
+  // Usar html2canvas para capturar la imagen
+  if(typeof html2canvas === 'undefined'){
+    toast('⚠️ Cargando html2canvas...');
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload=()=>capturarYCompartir(el,c);
+    document.head.appendChild(s);
+  } else {
+    capturarYCompartir(el,c);
+  }
+}
+
+async function capturarYCompartir(el,c){
+  try {
+    toast('📸 Generando imagen...');
+    const canvas=await html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+    document.body.removeChild(el);
+    canvas.toBlob(async(blob)=>{
+      const file=new File([blob],`cotizacion-${c.num}.png`,{type:'image/png'});
+      // Intentar Web Share API (funciona en iOS Safari y Android Chrome)
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        try {
+          await navigator.share({
+            files:[file],
+            title:`Cotización ${c.num}`,
+            text:`Cotización ${c.num} · ${c.cliente} · ${fmt(c.total)}`
+          });
+        } catch(e) {
+          if(e.name!=='AbortError') descargarImagen(canvas,c);
+        }
+      } else {
+        // Fallback: descargar la imagen
+        descargarImagen(canvas,c);
+      }
+    },'image/png');
+  } catch(e) {
+    console.error(e);
+    document.body.removeChild(el);
+    toast('⚠️ Error generando imagen');
+  }
+}
+
+function descargarImagen(canvas,c){
+  const a=document.createElement('a');
+  a.download=`cotizacion-${c.num}.png`;
+  a.href=canvas.toDataURL('image/png');
+  a.click();
+  toast('📥 Imagen descargada · Compártela por WhatsApp');
 }
 
 cargarDatos();
