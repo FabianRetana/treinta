@@ -388,8 +388,11 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
         <div class="stat-value stat-red" id="statRechazadas">0</div>
       </div>
     </div>
-    <div class="section-header">
+    <div class="section-header" style="margin-bottom:8px">
       <span class="section-title">Cotizaciones</span>
+      <select id="mesFiltro" onchange="renderHistorial()" style="font-size:12px;font-weight:600;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;outline:none;font-family:var(--font);">
+        <option value="">Todos los meses</option>
+      </select>
     </div>
     <div id="historialList"></div>
   </div>
@@ -478,19 +481,17 @@ async function apiSave(action, data) {
 
 // Serializar productos a filas para Sheets
 function productosToRows(arr) {
-  if (!arr.length) return [['id','nombre','precio','stock','stockMin','desc']];
-  // No guardamos imágenes en Sheets (son muy pesadas), se guardan en localStorage
-  return [['id','nombre','precio','stock','stockMin','desc'],
-    ...arr.map(p => [p.id, p.nombre, p.precio, p.stock, p.stockMin||5, p.desc||''])];
+  if (!arr.length) return [['id','nombre','precio','stock','stockMin','desc','img']];
+  // Guardamos la URL de Cloudinary en Sheets (es solo texto, no pesa nada)
+  return [['id','nombre','precio','stock','stockMin','desc','img'],
+    ...arr.map(p => [p.id, p.nombre, p.precio, p.stock, p.stockMin||5, p.desc||'', p.img||''])];
 }
 
 function rowsToProductos(rows) {
   if (!rows || rows.length < 2) return [];
-  // Recuperamos imágenes desde localStorage
-  const imgs = lsLoad('fr_imgs') || {};
   return rows.slice(1).map(r => ({
     id: String(r[0]), nombre: String(r[1]), precio: Number(r[2]), stock: Number(r[3]),
-    stockMin: Number(r[4])||5, desc: String(r[5]||''), img: imgs[String(r[0])] || null
+    stockMin: Number(r[4])||5, desc: String(r[5]||''), img: String(r[6]||'')||null
   })).filter(p => p.id && p.nombre);
 }
 
@@ -608,17 +609,36 @@ function abrirModal(id=null){
   document.getElementById('modalProducto').classList.add('open');
 }
 
-function handleImg(e){
+async function handleImg(e){
   const file=e.target.files[0];if(!file)return;
+  // Mostrar preview local inmediato
   const r=new FileReader();
   r.onload=ev=>{
-    imgData=ev.target.result;
     const prev=document.getElementById('imgPreview');
-    prev.src=imgData;prev.style.display='block';
+    prev.src=ev.target.result;prev.style.display='block';
     document.getElementById('imgIcon').style.display='none';
-    document.getElementById('imgText').style.display='none';
+    document.getElementById('imgText').textContent='Subiendo...';
   };
   r.readAsDataURL(file);
+  // Subir a Cloudinary
+  try {
+    const fd=new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', 'stock_app');
+    const res=await fetch('https://api.cloudinary.com/v1_1/deyhqj1ie/image/upload', {method:'POST', body:fd});
+    const data=await res.json();
+    if(data.secure_url){
+      imgData=data.secure_url;
+      document.getElementById('imgText').textContent='✅ Imagen subida';
+      document.getElementById('imgPreview').src=imgData;
+    } else {
+      toast('⚠️ Error subiendo imagen');
+      document.getElementById('imgText').textContent='Toca para añadir foto';
+    }
+  } catch(err) {
+    toast('⚠️ Error de conexión al subir imagen');
+    document.getElementById('imgText').textContent='Toca para añadir foto';
+  }
 }
 
 function guardarProducto(){
@@ -745,17 +765,45 @@ function guardarCotizacion(){
 }
 
 // ── HISTORIAL ────────────────────────────
+function poblarMeses(){
+  const sel=document.getElementById('mesFiltro');
+  if(!sel)return;
+  const meses=new Set(cotizaciones.map(c=>{
+    const p=c.fecha.split(' ');return p.length>=3?`${p[1]} ${p[2]}`:c.fecha;
+  }));
+  const actual=sel.value;
+  sel.innerHTML='<option value="">Todos los meses</option>';
+  [...meses].reverse().forEach(m=>{
+    const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);
+  });
+  sel.value=actual;
+}
+
 function renderHistorial(){
   const el=document.getElementById('historialList');
+  const mesFiltro=(document.getElementById('mesFiltro')||{}).value||'';
+  poblarMeses();
+
+  // Stats siempre sobre todas las cotizaciones
   document.getElementById('statPendientes').textContent=cotizaciones.filter(c=>c.estado==='pendiente').length;
   document.getElementById('statAprobadas').textContent=cotizaciones.filter(c=>c.estado==='aprobada').length;
   document.getElementById('statRechazadas').textContent=cotizaciones.filter(c=>c.estado==='rechazada').length;
   document.getElementById('statIngresos').textContent=fmt(cotizaciones.filter(c=>c.estado==='aprobada').reduce((a,c)=>a+c.total,0));
-  if(!cotizaciones.length){
-    el.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Sin cotizaciones</div><div class="empty-sub">Las cotizaciones que crees<br>aparecerán aquí</div></div>`;
+
+  let lista=cotizaciones;
+  if(mesFiltro){
+    lista=cotizaciones.filter(c=>{
+      const p=c.fecha.split(' ');
+      const m=p.length>=3?`${p[1]} ${p[2]}`:c.fecha;
+      return m===mesFiltro;
+    });
+  }
+
+  if(!lista.length){
+    el.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">${mesFiltro?'Sin cotizaciones este mes':'Sin cotizaciones'}</div><div class="empty-sub">Las cotizaciones que crees<br>aparecerán aquí</div></div>`;
     return;
   }
-  el.innerHTML=cotizaciones.map(c=>{
+  el.innerHTML=lista.map(c=>{
     const sClass={'pendiente':'s-pendiente','aprobada':'s-aprobada','rechazada':'s-rechazada'}[c.estado];
     const sLabel={'pendiente':'Pendiente','aprobada':'Aprobada','rechazada':'Rechazada'}[c.estado];
     const items=c.items.map(i=>`${i.nombre} ×${i.qty}`).join(' · ');
@@ -775,6 +823,8 @@ function renderHistorial(){
       <div class="hist-actions">
         ${btns}
         <button class="hist-btn hb-ver" onclick="verDetalle('${c.id}')">👁 Ver</button>
+        <button class="hist-btn" style="background:var(--green-light);color:var(--green-dark)" onclick="compartirWhatsapp('${c.id}')">📤 WA</button>
+        <button class="hist-btn" style="background:var(--red-light);color:var(--red)" onclick="eliminarCotizacion('${c.id}')">🗑</button>
       </div>
     </div>`;
   }).join('');
@@ -811,6 +861,68 @@ function verDetalle(id){
       <span style="font-size:22px;font-weight:800;color:var(--green);font-family:var(--mono)">${fmt(c.total)}</span>
     </div>`;
   document.getElementById('modalDetalle').classList.add('open');
+}
+
+function eliminarCotizacion(id){
+  if(!confirm('¿Eliminar esta cotización del historial?'))return;
+  // Si estaba aprobada, restaurar stock
+  const c=cotizaciones.find(x=>x.id===id);
+  if(c&&c.estado==='aprobada'){
+    c.items.forEach(i=>{const p=productos.find(x=>x.id===i.id);if(p)p.stock+=i.qty;});
+    saveProductos();
+  }
+  cotizaciones=cotizaciones.filter(x=>x.id!==id);
+  saveCotizaciones();
+  renderHistorial();
+  toast('🗑 Cotización eliminada');
+}
+
+function compartirWhatsapp(id){
+  const c=cotizaciones.find(x=>x.id===id);if(!c)return;
+  const sep='━━━━━━━━━━━━━━━━━━━━━━━━';
+  const sep2='────────────────────────';
+  let txt=`📋 *COTIZACIÓN ${c.num}*\n${sep}\n`;
+  txt+=`📅 ${c.fecha}\n👤 ${c.cliente}\n\n`;
+  txt+=`*PRODUCTOS*\n${sep2}\n`;
+  c.items.forEach(i=>{txt+=`▸ ${i.nombre} ×${i.qty}\n   ${fmt(i.precio*i.qty)}\n`;});
+  txt+=`\n${sep}\n`;
+  txt+=`💰 *TOTAL: ${fmt(c.total)}*\n${sep}\n\n`;
+  txt+=`✅ 1–2 rondas de ajustes sin costo adicional.\n`;
+  txt+=`💳 50% anticipo · 50% contra entrega.\n`;
+  txt+=`📆 Válida por 30 días.`;
+  const url=`https://wa.me/?text=${encodeURIComponent(txt)}`;
+  window.open(url,'_blank');
+}
+
+
+function eliminarCotizacion(id){
+  if(!confirm('¿Eliminar esta cotización del historial?'))return;
+  const c=cotizaciones.find(x=>x.id===id);
+  if(c&&c.estado==='aprobada'){
+    c.items.forEach(i=>{const p=productos.find(x=>x.id===i.id);if(p)p.stock+=i.qty;});
+    saveProductos();
+  }
+  cotizaciones=cotizaciones.filter(x=>x.id!==id);
+  saveCotizaciones();
+  renderHistorial();
+  toast('🗑 Cotización eliminada');
+}
+
+function compartirWhatsapp(id){
+  const c=cotizaciones.find(x=>x.id===id);if(!c)return;
+  const sep='━━━━━━━━━━━━━━━━━━━━━━━━';
+  const sep2='────────────────────────';
+  let txt='📋 *COTIZACIÓN '+c.num+'*\n'+sep+'\n';
+  txt+='📅 '+c.fecha+'\n👤 '+c.cliente+'\n\n';
+  txt+='*PRODUCTOS*\n'+sep2+'\n';
+  c.items.forEach(function(i){txt+='▸ '+i.nombre+' ×'+i.qty+'\n   '+fmt(i.precio*i.qty)+'\n';});
+  txt+='\n'+sep+'\n';
+  txt+='💰 *TOTAL: '+fmt(c.total)+'*\n'+sep+'\n\n';
+  txt+='✅ 1–2 rondas de ajustes sin costo adicional.\n';
+  txt+='💳 50% anticipo · 50% contra entrega.\n';
+  txt+='📆 Válida por 30 días.';
+  var url='https://wa.me/?text='+encodeURIComponent(txt);
+  window.open(url,'_blank');
 }
 
 cargarDatos();
