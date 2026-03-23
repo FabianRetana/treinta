@@ -765,18 +765,58 @@ function guardarCotizacion(){
 }
 
 // ── HISTORIAL ────────────────────────────
+// Meses fijos desde enero 2026 hasta el mes actual
+function getMesesFijos(){
+  const MESES=['ene.','feb.','mar.','abr.','may.','jun.','jul.','ago.','sep.','oct.','nov.','dic.'];
+  const MESES_LABEL=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const hoy=new Date();
+  const mesActual=hoy.getMonth();
+  const anioActual=hoy.getFullYear();
+  const lista=[];
+  // Desde enero 2026 hasta el mes actual
+  let anio=2026, mes=0;
+  while(anio<anioActual||(anio===anioActual&&mes<=mesActual)){
+    lista.push({
+      value:`${MESES[mes]} ${String(anio).slice(2)}`,
+      label:`${MESES_LABEL[mes]} ${anio}`
+    });
+    mes++;if(mes>11){mes=0;anio++;}
+  }
+  return lista.reverse(); // más reciente primero
+}
+
+function parseMesCot(fecha){
+  // fecha viene como "16 mar. 2026" o "16 mar. 26"
+  const p=fecha.split(' ');
+  if(p.length>=3){
+    const mes=p[1].toLowerCase();
+    const anio=p[2].length===2?p[2]:String(p[2]).slice(2);
+    return `${mes} ${anio}`;
+  }
+  return fecha;
+}
+
 function poblarMeses(){
   const sel=document.getElementById('mesFiltro');
   if(!sel)return;
-  const meses=new Set(cotizaciones.map(c=>{
-    const p=c.fecha.split(' ');return p.length>=3?`${p[1]} ${p[2]}`:c.fecha;
-  }));
   const actual=sel.value;
+  const meses=getMesesFijos();
   sel.innerHTML='<option value="">Todos los meses</option>';
-  [...meses].reverse().forEach(m=>{
-    const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);
+  meses.forEach(m=>{
+    const o=document.createElement('option');
+    o.value=m.value;
+    o.textContent=m.label;
+    sel.appendChild(o);
   });
-  sel.value=actual;
+  // Restaurar selección o seleccionar mes actual por defecto
+  if(actual&&[...sel.options].some(o=>o.value===actual)){
+    sel.value=actual;
+  }
+}
+
+function getCotsFiltradas(mesFiltro){
+  if(!mesFiltro)return cotizaciones;
+  return cotizaciones.filter(c=>parseMesCot(c.fecha)===mesFiltro);
 }
 
 function renderHistorial(){
@@ -784,20 +824,13 @@ function renderHistorial(){
   const mesFiltro=(document.getElementById('mesFiltro')||{}).value||'';
   poblarMeses();
 
-  // Stats siempre sobre todas las cotizaciones
-  document.getElementById('statPendientes').textContent=cotizaciones.filter(c=>c.estado==='pendiente').length;
-  document.getElementById('statAprobadas').textContent=cotizaciones.filter(c=>c.estado==='aprobada').length;
-  document.getElementById('statRechazadas').textContent=cotizaciones.filter(c=>c.estado==='rechazada').length;
-  document.getElementById('statIngresos').textContent=fmt(cotizaciones.filter(c=>c.estado==='aprobada').reduce((a,c)=>a+c.total,0));
+  const lista=getCotsFiltradas(mesFiltro);
 
-  let lista=cotizaciones;
-  if(mesFiltro){
-    lista=cotizaciones.filter(c=>{
-      const p=c.fecha.split(' ');
-      const m=p.length>=3?`${p[1]} ${p[2]}`:c.fecha;
-      return m===mesFiltro;
-    });
-  }
+  // Stats filtradas por mes seleccionado
+  document.getElementById('statPendientes').textContent=lista.filter(c=>c.estado==='pendiente').length;
+  document.getElementById('statAprobadas').textContent=lista.filter(c=>c.estado==='aprobada').length;
+  document.getElementById('statRechazadas').textContent=lista.filter(c=>c.estado==='rechazada').length;
+  document.getElementById('statIngresos').textContent=fmt(lista.filter(c=>c.estado==='aprobada').reduce((a,c)=>a+c.total,0));
 
   if(!lista.length){
     el.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">${mesFiltro?'Sin cotizaciones este mes':'Sin cotizaciones'}</div><div class="empty-sub">Las cotizaciones que crees<br>aparecerán aquí</div></div>`;
