@@ -755,7 +755,7 @@ function guardarCotizacion(){
   });
   if(!items.length){toast('⚠️ Selecciona al menos un producto');return;}
   cotizaciones.unshift({id:'c_'+Date.now(),num,cliente,items,total,
-    fecha:new Date().toLocaleDateString('es-CR',{day:'numeric',month:'short',year:'numeric'}),estado:'pendiente'});
+    fecha:(()=>{const MESES=['ene.','feb.','mar.','abr.','may.','jun.','jul.','ago.','sep.','oct.','nov.','dic.'];const d=new Date();return `${d.getDate()} ${MESES[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;})(),estado:'pendiente'});
   saveCotizaciones();
   document.getElementById('cotCliente').value='';
   document.getElementById('cotNum').value='';
@@ -806,13 +806,23 @@ function getMesesFijos(){
 }
 
 function parseMesCot(fecha){
-  // fecha viene como "16 mar. 2026" o "16 mar. 26"
+  if(!fecha)return '';
+  // Si es formato ISO: "2026-03-22T06:00:00.000Z"
+  if(fecha.includes('T')||fecha.match(/^\d{4}-\d{2}-\d{2}/)){
+    const d=new Date(fecha);
+    if(!isNaN(d)){
+      const MESES=['ene.','feb.','mar.','abr.','may.','jun.','jul.','ago.','sep.','oct.','nov.','dic.'];
+      return `${MESES[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+    }
+  }
+  // Formato "16 mar. 2026" o "16 mar. 26"
   const p=fecha.split(' ');
   if(p.length>=3){
-    const mes=p[1].toLowerCase();
+    const mes=p[1].toLowerCase().replace(',','');
     const anio=p[2].length===2?p[2]:String(p[2]).slice(2);
     return `${mes} ${anio}`;
   }
+  // Formato "16 mar. 26" (3 partes ya ok arriba)
   return fecha;
 }
 
