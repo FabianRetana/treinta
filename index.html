@@ -459,7 +459,7 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 const API = 'https://script.google.com/macros/s/AKfycby59TSm-rjPtcwkdtgBjkvtr62D3TZdrOcj-XqyIdgfJ_hpababKuGZEp2hwu3qiQrf/exec';
 
 // ── GOOGLE SHEETS API ────────────────────
-// Usamos solo GET para todo — Apps Script maneja GET sin problemas de CORS
+// GET para leer, GET con parámetros para guardar (sin CORS issues)
 async function apiGet(action) {
   try {
     const r = await fetch(`${API}?action=${action}&t=${Date.now()}`);
@@ -470,20 +470,12 @@ async function apiGet(action) {
 
 async function apiSave(action, data) {
   try {
-    // Dividimos los datos en chunks si es necesario y usamos GET con encode
     const payload = encodeURIComponent(JSON.stringify(data));
-    // Apps Script acepta GET con parámetros
     const url = `${API}?action=${action}&data=${payload}&t=${Date.now()}`;
-    // Si la URL es muy larga, usamos POST con text/plain (no-cors)
-    if(url.length > 8000) {
-      await fetch(API, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: `action=${action}&data=${payload}`
-      });
-    } else {
-      await fetch(url);
-    }
+    const r = await fetch(url);
+    const text = await r.text();
+    const res = JSON.parse(text);
+    if(!res.ok) console.error('Error guardando:', res);
   } catch(e) { console.error('apiSave error:', e); }
 }
 
