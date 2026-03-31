@@ -451,9 +451,10 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 <div class="page" id="page-catalogo">
   <div class="scroll-area">
     <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px;">
-      <div style="font-size:12px;color:rgba(255,255,255,0.6);font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Vista previa</div>
-      <div style="font-size:20px;font-weight:800;color:white;margin-bottom:4px;">Catálogo de productos</div>
-      <div style="font-size:13px;color:rgba(255,255,255,0.6);">Selecciona los productos a incluir y genera el PDF</div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.6);font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Catálogo de productos</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:12px;">Selecciona los productos a incluir y genera el PDF</div>
+      <label style="font-size:11px;color:rgba(255,255,255,0.5);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:5px;">Título del catálogo</label>
+      <input type="text" id="catTitulo" placeholder="Ej: Colección Primavera 2026" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;font-size:14px;color:white;font-family:var(--font);outline:none;">
     </div>
     <div class="section-header">
       <span class="section-title">Productos a incluir</span>
@@ -1179,19 +1180,202 @@ function toggleCat(id){
 async function generarPDF(){
   const incluidos=productos.filter(p=>catSeleccion[p.id]);
   if(!incluidos.length){toast('⚠️ Selecciona al menos un producto');return;}
+
+  const tituloInput=document.getElementById('catTitulo').value.trim()||'Catálogo de Productos';
   toast('📄 Generando PDF...');
   document.getElementById('btnGenerarPDF').disabled=true;
   document.getElementById('btnGenerarPDF').textContent='⏳ Generando...';
 
-  // Cargar jsPDF si no está disponible
   if(typeof window.jspdf==='undefined'){
     await new Promise((res,rej)=>{
       const s=document.createElement('script');
       s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-      s.onload=res; s.onerror=rej;
-      document.head.appendChild(s);
+      s.onload=res;s.onerror=rej;document.head.appendChild(s);
     });
   }
+
+  const {jsPDF}=window.jspdf;
+  // Formato vertical tipo historia — ancho 120mm, alto proporcional
+  const W=120;
+  const hoy=new Date();
+  const MESES_FULL=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  // Calcular altura total: portada + productos + última página
+  const portadaH=80;
+  const productoH=120;
+  const sepH=8;
+  const finalH=70;
+  const totalH=portadaH+(incluidos.length*(productoH+sepH))+finalH;
+
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:[W,totalH]});
+
+  // Paleta inspirada en la imagen de referencia
+  const C={
+    bg:[245,242,232],      // beige cálido
+    dark:[45,30,20],       // marrón oscuro
+    accent:[180,155,80],   // dorado/verde oliva
+    accentLight:[220,215,175], // acento claro
+    white:[255,255,255],
+    gray:[130,120,110],
+    lightGray:[220,215,205]
+  };
+
+  const setFill=([r,g,b])=>doc.setFillColor(r,g,b);
+  const setTxt=([r,g,b])=>doc.setTextColor(r,g,b);
+  const setDraw=([r,g,b])=>doc.setDrawColor(r,g,b);
+
+  // ── PORTADA ──────────────────────────────
+  setFill(C.bg); doc.rect(0,0,W,portadaH,'F');
+
+  // Banda superior con color acento
+  setFill(C.accent); doc.rect(0,0,W,18,'F');
+
+  // Título principal en la banda
+  setTxt(C.white);
+  doc.setFontSize(13); doc.setFont('helvetica','bold');
+  const tLines=doc.splitTextToSize(tituloInput.toUpperCase(),W-16);
+  doc.text(tLines,8,11);
+
+  // Decoración: estrellas de 4 puntas (rombos)
+  setFill(C.dark);
+  // Rombo decorativo derecha
+  doc.triangle(W-14,22, W-10,26, W-14,30,'F');
+  doc.triangle(W-14,22, W-18,26, W-14,30,'F');
+
+  // Línea divisoria
+  setDraw(C.accentLight); doc.setLineWidth(0.3);
+  doc.line(8,24,W-8,24);
+
+  // Subtítulo
+  setTxt(C.gray);
+  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+  doc.text(`${MESES_FULL[hoy.getMonth()]} ${hoy.getFullYear()}  ·  ${incluidos.length} producto${incluidos.length!==1?'s':''}`,8,30);
+
+  // Rombo decorativo izquierda inferior
+  setFill(C.dark);
+  doc.triangle(12,portadaH-18, 16,portadaH-14, 12,portadaH-10,'F');
+  doc.triangle(12,portadaH-18, 8,portadaH-14, 12,portadaH-10,'F');
+
+  // ── PRODUCTOS ────────────────────────────
+  let y=portadaH;
+
+  for(let i=0;i<incluidos.length;i++){
+    const p=incluidos[i];
+    const isEven=i%2===0;
+
+    // Fondo del bloque
+    setFill(C.bg); doc.rect(0,y,W,productoH,'F');
+
+    // Línea separadora superior
+    setDraw(C.lightGray); doc.setLineWidth(0.2);
+    doc.line(0,y,W,y);
+
+    // Imagen del producto — ocupa todo el ancho, altura proporcional
+    const imgH=65;
+    const imgY=y+3;
+    const imgX=3;
+    const imgW=W-6;
+
+    if(p.img&&(p.img.startsWith('http')||p.img.startsWith('data:'))){
+      try {
+        const imgType=p.img.includes('.png')||p.img.startsWith('data:image/png')?'PNG':'JPEG';
+        doc.addImage(p.img,imgType,imgX,imgY,imgW,imgH,undefined,'FAST');
+        // Bordes redondeados simulados con overlay en esquinas
+        setFill(C.bg);
+        doc.rect(imgX,imgY,3,3,'F');
+        doc.rect(imgX+imgW-3,imgY,3,3,'F');
+        doc.rect(imgX,imgY+imgH-3,3,3,'F');
+        doc.rect(imgX+imgW-3,imgY+imgH-3,3,3,'F');
+      } catch(e){
+        setFill(C.accentLight); doc.roundedRect(imgX,imgY,imgW,imgH,3,3,'F');
+        setTxt(C.gray); doc.setFontSize(8);
+        doc.text('Sin imagen',W/2,imgY+imgH/2,{align:'center'});
+      }
+    } else {
+      setFill(C.accentLight); doc.roundedRect(imgX,imgY,imgW,imgH,3,3,'F');
+      setTxt(C.gray); doc.setFontSize(8);
+      doc.text('Sin imagen',W/2,imgY+imgH/2,{align:'center'});
+    }
+
+    // Badge de precio — círculo festoneado simulado con círculo
+    const badgeX=isEven?14:W-14;
+    const badgeY=imgY+imgH-12;
+    setFill(C.accentLight); doc.circle(badgeX,badgeY,10,'F');
+    setDraw(C.accent); doc.setLineWidth(0.4);
+    doc.circle(badgeX,badgeY,10,'S');
+    // Precio dentro del badge
+    setTxt(C.dark);
+    doc.setFontSize(7); doc.setFont('helvetica','bold');
+    const precioStr=fmt(p.precio).replace('₡','₡');
+    doc.text(precioStr,badgeX,badgeY+2.5,{align:'center'});
+
+    // Nombre del producto
+    const txtY=imgY+imgH+8;
+    setTxt(C.dark);
+    doc.setFontSize(11); doc.setFont('helvetica','bold');
+    const nombreLines=doc.splitTextToSize(p.nombre,W-16);
+    doc.text(nombreLines,8,txtY);
+
+    // Descripción con ícono de check
+    if(p.desc){
+      const descY=txtY+(nombreLines.length*5)+3;
+      setFill(C.accent); doc.circle(11,descY-1.5,2,'F');
+      setTxt(C.white); doc.setFontSize(5); doc.text('✓',11,descY-0.5,{align:'center'});
+      setTxt(C.gray); doc.setFontSize(7); doc.setFont('helvetica','normal');
+      const descLines=doc.splitTextToSize(p.desc,W-22);
+      doc.text(descLines.slice(0,2),16,descY);
+    }
+
+    // Línea decorativa al final del producto (estrella/rombo centrado)
+    const romboY=y+productoH-4;
+    setFill(C.dark);
+    doc.triangle(W/2,romboY-4, W/2+3,romboY, W/2,romboY+4,'F');
+    doc.triangle(W/2,romboY-4, W/2-3,romboY, W/2,romboY+4,'F');
+
+    y+=productoH+sepH;
+  }
+
+  // ── PÁGINA FINAL ─────────────────────────
+  setFill(C.accent); doc.rect(0,y,W,finalH,'F');
+  // Rombo decorativo
+  setFill(C.dark);
+  doc.triangle(W/2,y+10, W/2+5,y+16, W/2,y+22,'F');
+  doc.triangle(W/2,y+10, W/2-5,y+16, W/2,y+22,'F');
+
+  setTxt(C.white);
+  doc.setFontSize(12); doc.setFont('helvetica','bold');
+  doc.text('¡Gracias!',W/2,y+34,{align:'center'});
+  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+  doc.setTextColor(255,255,255);
+  doc.text('Para cotizar o consultar disponibilidad',W/2,y+42,{align:'center'});
+  doc.text('no dudes en contactarnos.',W/2,y+49,{align:'center'});
+
+  // Línea y fecha
+  setDraw([255,255,255]); doc.setLineWidth(0.3);
+  doc.line(20,y+54,W-20,y+54);
+  doc.setFontSize(7); doc.setTextColor(220,215,175);
+  doc.text(`${MESES_FULL[hoy.getMonth()]} ${hoy.getFullYear()}`,W/2,y+60,{align:'center'});
+
+  // Nombre del archivo
+  const nombreArchivo=tituloInput.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'')||'catalogo';
+  const pdfBlob=doc.output('blob');
+  const pdfUrl=URL.createObjectURL(pdfBlob);
+
+  // Descargar
+  const a=document.createElement('a');
+  a.href=pdfUrl; a.download=`${nombreArchivo}.pdf`; a.click();
+
+  // Compartir por WhatsApp
+  setTimeout(()=>{
+    const msg=`📋 *${tituloInput}*\n\nTe comparto nuestro catálogo con ${incluidos.length} producto${incluidos.length!==1?'s':''}. \n\nPara consultas o cotizaciones, no dudes en contactarnos. 😊`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  }, 800);
+
+  toast('✅ PDF descargado · Abriendo WhatsApp...');
+  document.getElementById('btnGenerarPDF').disabled=false;
+  document.getElementById('btnGenerarPDF').textContent='📄 Generar PDF';
+}
+
 
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
