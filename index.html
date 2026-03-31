@@ -1195,185 +1195,209 @@ async function generarPDF(){
   }
 
   const {jsPDF}=window.jspdf;
-  // Formato vertical tipo historia — ancho 120mm, alto proporcional
-  const W=120;
+
+  // ── LAYOUT ───────────────────────────────
+  // A4 vertical. Cada producto: imagen rect ancha + bloque de texto compacto debajo.
+  // Sin portada. Título arriba, luego productos uno tras otro.
+
+  const W=210, H=297, margin=14;
   const hoy=new Date();
-  const MESES_FULL=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-  // Calcular altura total: portada + productos + última página
-  const portadaH=80;
-  const productoH=120;
-  const sepH=8;
-  const finalH=70;
-  const totalH=portadaH+(incluidos.length*(productoH+sepH))+finalH;
+  // Colores de la app
+  const GREEN    = [0,185,107];
+  const GREEN_LT = [230,249,241];
+  const DARK     = [26,29,35];
+  const GRAY     = [107,114,128];
+  const BORDER   = [232,234,237];
+  const WHITE    = [255,255,255];
+  const BG       = [247,248,250];
 
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:[W,totalH]});
+  // Medidas de cada tarjeta de producto
+  // 300px ≈ 79mm (1px = 0.2646mm)
+  const cardW    = W - margin*2;          // 182mm — ancho total
+  const imgBox   = 52.9;                  // contenedor imagen cuadrado (200px)
+  const cardH    = imgBox + 2;            // altura tarjeta = altura imagen + margen
+  const txtW     = cardW - imgBox - 6;    // ancho área de texto
+  const gap      = 6;                     // espacio entre tarjetas
 
-  // Paleta inspirada en la imagen de referencia
-  const C={
-    bg:[245,242,232],      // beige cálido
-    dark:[45,30,20],       // marrón oscuro
-    accent:[180,155,80],   // dorado/verde oliva
-    accentLight:[220,215,175], // acento claro
-    white:[255,255,255],
-    gray:[130,120,110],
-    lightGray:[220,215,205]
-  };
+  // Calcular cuántas páginas hacen falta
+  // Encabezado ocupa ~20mm en página 1
+  const headerH  = 20;
+  const usableP1 = H - margin*2 - headerH;
+  const usablePN = H - margin*2;
+  const fitP1    = Math.floor(usableP1 / (cardH+gap));
+  const fitPN    = Math.floor(usablePN / (cardH+gap));
+  const extraPages = incluidos.length > fitP1
+    ? Math.ceil((incluidos.length - fitP1) / fitPN)
+    : 0;
+  const totalPages = 1 + extraPages;
 
-  const setFill=([r,g,b])=>doc.setFillColor(r,g,b);
-  const setTxt=([r,g,b])=>doc.setTextColor(r,g,b);
-  const setDraw=([r,g,b])=>doc.setDrawColor(r,g,b);
+  const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
 
-  // ── PORTADA ──────────────────────────────
-  setFill(C.bg); doc.rect(0,0,W,portadaH,'F');
+  // ── Helpers ──────────────────────────────
+  const fill = ([r,g,b]) => doc.setFillColor(r,g,b);
+  const txt  = ([r,g,b]) => doc.setTextColor(r,g,b);
+  const drw  = ([r,g,b]) => doc.setDrawColor(r,g,b);
 
-  // Banda superior con color acento
-  setFill(C.accent); doc.rect(0,0,W,18,'F');
-
-  // Título principal en la banda
-  setTxt(C.white);
-  doc.setFontSize(13); doc.setFont('helvetica','bold');
-  const tLines=doc.splitTextToSize(tituloInput.toUpperCase(),W-16);
-  doc.text(tLines,8,11);
-
-  // Decoración: estrellas de 4 puntas (rombos)
-  setFill(C.dark);
-  // Rombo decorativo derecha
-  doc.triangle(W-14,22, W-10,26, W-14,30,'F');
-  doc.triangle(W-14,22, W-18,26, W-14,30,'F');
-
-  // Línea divisoria
-  setDraw(C.accentLight); doc.setLineWidth(0.3);
-  doc.line(8,24,W-8,24);
-
-  // Subtítulo
-  setTxt(C.gray);
-  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
-  doc.text(`${MESES_FULL[hoy.getMonth()]} ${hoy.getFullYear()}  ·  ${incluidos.length} producto${incluidos.length!==1?'s':''}`,8,30);
-
-  // Rombo decorativo izquierda inferior
-  setFill(C.dark);
-  doc.triangle(12,portadaH-18, 16,portadaH-14, 12,portadaH-10,'F');
-  doc.triangle(12,portadaH-18, 8,portadaH-14, 12,portadaH-10,'F');
-
-  // ── PRODUCTOS ────────────────────────────
-  let y=portadaH;
-
-  for(let i=0;i<incluidos.length;i++){
-    const p=incluidos[i];
-    const isEven=i%2===0;
-
-    // Fondo del bloque
-    setFill(C.bg); doc.rect(0,y,W,productoH,'F');
-
-    // Línea separadora superior
-    setDraw(C.lightGray); doc.setLineWidth(0.2);
-    doc.line(0,y,W,y);
-
-    // Imagen del producto — ocupa todo el ancho, altura proporcional
-    const imgH=65;
-    const imgY=y+3;
-    const imgX=3;
-    const imgW=W-6;
-
-    if(p.img&&(p.img.startsWith('http')||p.img.startsWith('data:'))){
-      try {
-        const imgType=p.img.includes('.png')||p.img.startsWith('data:image/png')?'PNG':'JPEG';
-        doc.addImage(p.img,imgType,imgX,imgY,imgW,imgH,undefined,'FAST');
-        // Bordes redondeados simulados con overlay en esquinas
-        setFill(C.bg);
-        doc.rect(imgX,imgY,3,3,'F');
-        doc.rect(imgX+imgW-3,imgY,3,3,'F');
-        doc.rect(imgX,imgY+imgH-3,3,3,'F');
-        doc.rect(imgX+imgW-3,imgY+imgH-3,3,3,'F');
-      } catch(e){
-        setFill(C.accentLight); doc.roundedRect(imgX,imgY,imgW,imgH,3,3,'F');
-        setTxt(C.gray); doc.setFontSize(8);
-        doc.text('Sin imagen',W/2,imgY+imgH/2,{align:'center'});
-      }
-    } else {
-      setFill(C.accentLight); doc.roundedRect(imgX,imgY,imgW,imgH,3,3,'F');
-      setTxt(C.gray); doc.setFontSize(8);
-      doc.text('Sin imagen',W/2,imgY+imgH/2,{align:'center'});
-    }
-
-    // Badge de precio — círculo festoneado simulado con círculo
-    const badgeX=isEven?14:W-14;
-    const badgeY=imgY+imgH-12;
-    setFill(C.accentLight); doc.circle(badgeX,badgeY,10,'F');
-    setDraw(C.accent); doc.setLineWidth(0.4);
-    doc.circle(badgeX,badgeY,10,'S');
-    // Precio dentro del badge
-    setTxt(C.dark);
-    doc.setFontSize(7); doc.setFont('helvetica','bold');
-    const precioStr=fmt(p.precio).replace('₡','₡');
-    doc.text(precioStr,badgeX,badgeY+2.5,{align:'center'});
-
-    // Nombre del producto
-    const txtY=imgY+imgH+8;
-    setTxt(C.dark);
-    doc.setFontSize(11); doc.setFont('helvetica','bold');
-    const nombreLines=doc.splitTextToSize(p.nombre,W-16);
-    doc.text(nombreLines,8,txtY);
-
-    // Descripción con ícono de check
-    if(p.desc){
-      const descY=txtY+(nombreLines.length*5)+3;
-      setFill(C.accent); doc.circle(11,descY-1.5,2,'F');
-      setTxt(C.white); doc.setFontSize(5); doc.text('✓',11,descY-0.5,{align:'center'});
-      setTxt(C.gray); doc.setFontSize(7); doc.setFont('helvetica','normal');
-      const descLines=doc.splitTextToSize(p.desc,W-22);
-      doc.text(descLines.slice(0,2),16,descY);
-    }
-
-    // Línea decorativa al final del producto (estrella/rombo centrado)
-    const romboY=y+productoH-4;
-    setFill(C.dark);
-    doc.triangle(W/2,romboY-4, W/2+3,romboY, W/2,romboY+4,'F');
-    doc.triangle(W/2,romboY-4, W/2-3,romboY, W/2,romboY+4,'F');
-
-    y+=productoH+sepH;
+  // Fondo de página
+  function pageBg(){
+    fill(BG); doc.rect(0,0,W,H,'F');
   }
 
-  // ── PÁGINA FINAL ─────────────────────────
-  setFill(C.accent); doc.rect(0,y,W,finalH,'F');
-  // Rombo decorativo
-  setFill(C.dark);
-  doc.triangle(W/2,y+10, W/2+5,y+16, W/2,y+22,'F');
-  doc.triangle(W/2,y+10, W/2-5,y+16, W/2,y+22,'F');
+  // Encabezado solo en página 1
+  function dibujarEncabezado(){
+    // Barra verde superior
+    fill(GREEN); doc.rect(0,0,W,1.5,'F');
+    // Título
+    txt(DARK);
+    doc.setFontSize(16); doc.setFont('helvetica','bold');
+    doc.text(tituloInput, margin, margin+8);
+    // Fecha alineada a la derecha
+    txt(GRAY);
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    const fechaTxt=`${hoy.getDate()}/${hoy.getMonth()+1}/${hoy.getFullYear()}`;
+    doc.text(fechaTxt, W-margin, margin+8, {align:'right'});
+    // Línea separadora bajo título
+    drw(BORDER); doc.setLineWidth(0.3);
+    doc.line(margin, margin+12, W-margin, margin+12);
+  }
 
-  setTxt(C.white);
-  doc.setFontSize(12); doc.setFont('helvetica','bold');
-  doc.text('¡Gracias!',W/2,y+34,{align:'center'});
-  doc.setFontSize(7.5); doc.setFont('helvetica','normal');
-  doc.setTextColor(255,255,255);
-  doc.text('Para cotizar o consultar disponibilidad',W/2,y+42,{align:'center'});
-  doc.text('no dudes en contactarnos.',W/2,y+49,{align:'center'});
+  // Dibujar una tarjeta de producto en posición (x,y)
+  async function dibujarProducto(p, x, y){
+    // Sombra sutil
+    fill([215,218,222]);
+    doc.roundedRect(x+1, y+1, cardW, cardH, 3, 3, 'F');
 
-  // Línea y fecha
-  setDraw([255,255,255]); doc.setLineWidth(0.3);
-  doc.line(20,y+54,W-20,y+54);
-  doc.setFontSize(7); doc.setTextColor(220,215,175);
-  doc.text(`${MESES_FULL[hoy.getMonth()]} ${hoy.getFullYear()}`,W/2,y+60,{align:'center'});
+    // Fondo tarjeta blanco
+    fill(WHITE);
+    doc.roundedRect(x, y, cardW, cardH, 3, 3, 'F');
 
-  // Nombre del archivo
+    // ── Contenedor imagen cuadrado izquierda (300px = 79.4mm) ──
+    const ix = x;           // inicio X imagen
+    const iy = y;           // inicio Y imagen
+    const iBox = imgBox;    // 79.4mm cuadrado
+
+    if(p.img && (p.img.startsWith('http')||p.img.startsWith('data:'))){
+      try{
+        const tipo = p.img.startsWith('data:image/png')||p.img.includes('.png') ? 'PNG':'JPEG';
+        // Imagen directamente en el contenedor, sin fondo ni overlays
+        doc.addImage(p.img, tipo, ix, iy, iBox, iBox, undefined, 'FAST');
+      } catch(e){
+        fill([235,238,242]); doc.roundedRect(ix, iy, iBox, iBox, 3, 3, 'F');
+        txt(GRAY); doc.setFontSize(8);
+        doc.text('Sin imagen', ix+iBox/2, iy+iBox/2+2, {align:'center'});
+      }
+    } else {
+      fill([235,238,242]); doc.roundedRect(ix, iy, iBox, iBox, 3, 3, 'F');
+      txt(GRAY); doc.setFontSize(8);
+      doc.text('Sin imagen', ix+iBox/2, iy+iBox/2+2, {align:'center'});
+    }
+
+    // ── Bloque de texto — derecha de la imagen ──
+    const tx = x + iBox + 6;   // inicio X texto
+    const ty = y;               // mismo Y que la tarjeta
+    const tw = txtW;            // ancho del área de texto
+
+    // Nombre del producto
+    txt(DARK); doc.setFontSize(11); doc.setFont('helvetica','bold');
+    const nombreLines = doc.splitTextToSize(p.nombre, tw);
+    doc.text(nombreLines, tx, ty+12);
+
+    // Línea verde bajo nombre
+    const lineY = ty+14+(nombreLines.length-1)*6;
+    fill(GREEN); doc.rect(tx, lineY, 20, 1, 'F');
+
+    // Precio
+    txt(GREEN); doc.setFontSize(13); doc.setFont('helvetica','bold');
+    const precioTexto = 'C' + Math.round(p.precio).toLocaleString('es-CR');
+    doc.text(precioTexto, tx, lineY+10);
+
+    // Descripción
+    if(p.desc){
+      txt(GRAY); doc.setFontSize(8); doc.setFont('helvetica','normal');
+      const descLines = doc.splitTextToSize(p.desc, tw);
+      doc.text(descLines.slice(0,4), tx, lineY+18);
+    }
+
+    // Stock pill — abajo del texto
+    const stockTxt = p.stock > (p.stockMin||5) ? 'En stock' : (p.stock>0 ? 'Pocas unidades' : 'Agotado');
+    const stockCol = p.stock > (p.stockMin||5) ? GREEN : (p.stock>0 ? [240,160,10] : [240,82,82]);
+    const pillW=30, pillH=7;
+    fill(stockCol); doc.roundedRect(tx, ty+iBox-pillH-4, pillW, pillH, 2, 2, 'F');
+    txt(WHITE); doc.setFontSize(6.5); doc.setFont('helvetica','bold');
+    doc.text(stockTxt, tx+pillW/2, ty+iBox-pillH-4+5.2, {align:'center'});
+
+    // Cantidad stock — junto al pill
+    txt(GRAY); doc.setFontSize(6.5); doc.setFont('helvetica','normal');
+    doc.text(`${p.stock} uds`, tx+pillW+3, ty+iBox-pillH-4+5.2);
+  }
+
+  // ── Generar páginas ───────────────────────
+  let pageIdx=0, prodIdx=0;
+  pageBg();
+  dibujarEncabezado();
+  let curY = margin + headerH;
+
+  while(prodIdx < incluidos.length){
+    const maxY = H - margin;
+    if(curY + cardH > maxY){
+      // Nueva página
+      doc.addPage();
+      pageBg();
+      // Línea verde top en páginas siguientes
+      fill(GREEN); doc.rect(0,0,W,1.5,'F');
+      // Título pequeño en páginas interiores
+      txt(GRAY); doc.setFontSize(7); doc.setFont('helvetica','normal');
+      doc.text(tituloInput, margin, 7);
+      curY = margin + 2;
+      pageIdx++;
+    }
+    await dibujarProducto(incluidos[prodIdx], margin, curY);
+    curY += cardH + gap;
+    prodIdx++;
+  }
+
+  // ── Pie de página en última hoja ─────────
+  fill(GREEN); doc.rect(0,H-8,W,8,'F');
+  txt(WHITE); doc.setFontSize(7); doc.setFont('helvetica','normal');
+  const pieTxt=`${tituloInput}  ·  ${incluidos.length} producto${incluidos.length!==1?'s':''}  ·  ${hoy.getDate()}/${hoy.getMonth()+1}/${hoy.getFullYear()}`;
+  doc.text(pieTxt, W/2, H-3, {align:'center'});
+
+  // ── Compartir PDF ────────────────────────
   const nombreArchivo=tituloInput.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'')||'catalogo';
   const pdfBlob=doc.output('blob');
-  const pdfUrl=URL.createObjectURL(pdfBlob);
+  const pdfFile=new File([pdfBlob],`${nombreArchivo}.pdf`,{type:'application/pdf'});
 
-  // Descargar
-  const a=document.createElement('a');
-  a.href=pdfUrl; a.download=`${nombreArchivo}.pdf`; a.click();
+  // Web Share API — funciona en iOS Safari y Android Chrome (comparte el archivo real)
+  if(navigator.canShare && navigator.canShare({files:[pdfFile]})){
+    try{
+      await navigator.share({
+        files:[pdfFile],
+        title:tituloInput,
+        text:`Catálogo: ${tituloInput} · ${incluidos.length} producto${incluidos.length!==1?'s':''}`
+      });
+      toast('✅ PDF compartido');
+    } catch(e){
+      if(e.name!=='AbortError'){
+        // Si el share falla, fallback a descarga
+        _descargarPDF(pdfBlob, nombreArchivo);
+      }
+    }
+  } else {
+    // Desktop o navegador sin Web Share: descarga directa
+    _descargarPDF(pdfBlob, nombreArchivo);
+  }
 
-  // Compartir por WhatsApp
-  setTimeout(()=>{
-    const msg=`📋 *${tituloInput}*\n\nTe comparto nuestro catálogo con ${incluidos.length} producto${incluidos.length!==1?'s':''}. \n\nPara consultas o cotizaciones, no dudes en contactarnos. 😊`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  }, 800);
-
-  toast('✅ PDF descargado · Abriendo WhatsApp...');
   document.getElementById('btnGenerarPDF').disabled=false;
   document.getElementById('btnGenerarPDF').textContent='📄 Generar PDF';
+}
+
+function _descargarPDF(blob, nombre){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`${nombre}.pdf`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  toast('✅ PDF descargado');
 }
 
 
