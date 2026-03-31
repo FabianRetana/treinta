@@ -281,6 +281,55 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
 .hb-reabrir { background: var(--surface2); color: var(--text2); }
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 
+/* ── CATÁLOGO ────────────────────────── */
+.cat-item {
+  display:flex; align-items:center; gap:12px;
+  background:var(--white); border:1.5px solid var(--border);
+  border-radius:var(--radius); padding:12px 14px; margin-bottom:8px;
+  transition:border-color 0.15s, background 0.15s;
+}
+.cat-item.incluido { border-color:var(--green); background:var(--green-light); }
+.cat-thumb {
+  width:52px;height:52px;border-radius:10px;flex-shrink:0;
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  font-size:22px;overflow:hidden;
+}
+.cat-thumb img {width:100%;height:100%;object-fit:cover;}
+.cat-info {flex:1;min-width:0;}
+.cat-name {font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.cat-price {font-size:13px;font-weight:700;color:var(--green);font-family:var(--mono);}
+.cat-toggle {
+  width:44px;height:26px;border-radius:99px;border:none;cursor:pointer;
+  position:relative;transition:background 0.2s;flex-shrink:0;
+  background:var(--border2);
+}
+.cat-toggle.on {background:var(--green);}
+.cat-toggle::after {
+  content:'';position:absolute;width:20px;height:20px;border-radius:50%;
+  background:white;top:3px;left:3px;transition:left 0.2s;
+  box-shadow:0 1px 3px rgba(0,0,0,0.2);
+}
+.cat-toggle.on::after {left:21px;}
+
+
+/* ── CATÁLOGO ────────────────────────── */
+.cat-item {
+  display:flex;align-items:center;gap:12px;
+  background:var(--white);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;
+  transition:border-color 0.15s,background 0.15s;
+}
+.cat-item.incluido{border-color:var(--green);background:var(--green-light);}
+.cat-thumb{width:52px;height:52px;border-radius:10px;flex-shrink:0;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;}
+.cat-thumb img{width:100%;height:100%;object-fit:cover;}
+.cat-info{flex:1;min-width:0;}
+.cat-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.cat-price{font-size:13px;font-weight:700;color:var(--green);font-family:var(--mono);}
+.cat-toggle{width:44px;height:26px;border-radius:99px;border:none;cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;background:var(--border2);}
+.cat-toggle.on{background:var(--green);}
+.cat-toggle::after{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:white;top:3px;left:3px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);}
+.cat-toggle.on::after{left:21px;}
+
 /* ── TOAST ───────────────────────────── */
 .toast {
   position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
@@ -398,6 +447,27 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
   </div>
 </div>
 
+<!-- PAGE: CATÁLOGO -->
+<div class="page" id="page-catalogo">
+  <div class="scroll-area">
+    <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px;">
+      <div style="font-size:12px;color:rgba(255,255,255,0.6);font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Vista previa</div>
+      <div style="font-size:20px;font-weight:800;color:white;margin-bottom:4px;">Catálogo de productos</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.6);">Selecciona los productos a incluir y genera el PDF</div>
+    </div>
+    <div class="section-header">
+      <span class="section-title">Productos a incluir</span>
+      <span id="catCount" class="section-count"></span>
+    </div>
+    <div id="catProductosList"></div>
+    <div id="catActions" style="display:none;margin-top:8px;">
+      <button class="btn-primary" onclick="generarPDF()" id="btnGenerarPDF">
+        📄 Generar PDF
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- NAV -->
 <nav class="nav">
   <button class="nav-btn active" onclick="goPage('inventario',this)">
@@ -408,6 +478,9 @@ body { font-family: var(--font); color: var(--text); overscroll-behavior: none; 
   </button>
   <button class="nav-btn" onclick="goPage('historial',this)">
     <div class="nav-dot">📊</div>Historial
+  </button>
+  <button class="nav-btn" onclick="goPage('catalogo',this)">
+    <div class="nav-dot">🛍️</div>Catálogo
   </button>
 </nav>
 
@@ -572,13 +645,19 @@ function goPage(name,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
-  const titles={inventario:'Mi <span style="color:var(--green)">Stock</span>',cotizar:'Nueva cotización',historial:'Historial'};
-  document.getElementById('headerTitle').innerHTML=titles[name];
+  const titles={
+    inventario:'Mi <span style="color:var(--green)">Stock</span>',
+    cotizar:'Nueva cotización',
+    historial:'Historial',
+    catalogo:'Catálogo'
+  };
+  document.getElementById('headerTitle').innerHTML=titles[name]||name;
   const act=document.getElementById('headerAction');
-  act.style.display=name==='inventario'?'flex':'none'; if(name==='inventario')act.style.display='flex';
+  act.style.display=name==='inventario'?'flex':'none';
   if(name==='cotizar')renderCotizar();
   if(name==='historial')renderHistorial();
   if(name==='inventario')renderProductos();
+  if(name==='catalogo')renderCatalogo();
 }
 function headerActionClick(){abrirModal();}
 
@@ -1051,6 +1130,238 @@ function descargarImagen(canvas,c){
   a.href=canvas.toDataURL('image/png');
   a.click();
   toast('📥 Imagen descargada · Compártela por WhatsApp');
+}
+
+
+// ── CATÁLOGO ─────────────────────────────
+let catSeleccion = {}; // {id: true/false}
+
+function renderCatalogo(){
+  const el=document.getElementById('catProductosList');
+  const cnt=document.getElementById('catCount');
+  const actions=document.getElementById('catActions');
+  if(!productos.length){
+    el.innerHTML=`<div class="empty"><div class="empty-icon">🛍️</div><div class="empty-title">Sin productos</div><div class="empty-sub">Agrega productos al inventario primero</div></div>`;
+    cnt.textContent=''; actions.style.display='none'; return;
+  }
+  // Inicializar selección — todos incluidos por defecto
+  productos.forEach(p=>{ if(catSeleccion[p.id]===undefined) catSeleccion[p.id]=true; });
+  const incluidos=productos.filter(p=>catSeleccion[p.id]).length;
+  cnt.textContent=`${incluidos} de ${productos.length} incluidos`;
+  actions.style.display=incluidos>0?'block':'none';
+  el.innerHTML=productos.map(p=>{
+    const on=catSeleccion[p.id]?'incluido':'';
+    const toggleOn=catSeleccion[p.id]?'on':'';
+    const img=p.img?`<img src="${p.img}" alt="">`:`<span style="font-size:22px">📦</span>`;
+    return `<div class="cat-item ${on}" id="catitem-${p.id}">
+      <div class="cat-thumb">${img}</div>
+      <div class="cat-info">
+        <div class="cat-name">${p.nombre}</div>
+        <div class="cat-price">${fmt(p.precio)}</div>
+        ${p.desc?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${p.desc}</div>`:''}
+      </div>
+      <button class="cat-toggle ${toggleOn}" id="cattoggle-${p.id}" onclick="toggleCat('${p.id}')"></button>
+    </div>`;
+  }).join('');
+}
+
+function toggleCat(id){
+  catSeleccion[id]=!catSeleccion[id];
+  const item=document.getElementById('catitem-'+id);
+  const toggle=document.getElementById('cattoggle-'+id);
+  item.classList.toggle('incluido',catSeleccion[id]);
+  toggle.classList.toggle('on',catSeleccion[id]);
+  const incluidos=productos.filter(p=>catSeleccion[p.id]).length;
+  document.getElementById('catCount').textContent=`${incluidos} de ${productos.length} incluidos`;
+  document.getElementById('catActions').style.display=incluidos>0?'block':'none';
+}
+
+async function generarPDF(){
+  const incluidos=productos.filter(p=>catSeleccion[p.id]);
+  if(!incluidos.length){toast('⚠️ Selecciona al menos un producto');return;}
+  toast('📄 Generando PDF...');
+  document.getElementById('btnGenerarPDF').disabled=true;
+  document.getElementById('btnGenerarPDF').textContent='⏳ Generando...';
+
+  // Cargar jsPDF si no está disponible
+  if(typeof window.jspdf==='undefined'){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=210, margin=16;
+
+  // ── PORTADA ──────────────────────────────
+  // Fondo oscuro elegante
+  doc.setFillColor(15,23,42);
+  doc.rect(0,0,W,297,'F');
+
+  // Línea decorativa verde
+  doc.setFillColor(0,185,107);
+  doc.rect(0,0,W,3,'F');
+
+  // Título
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(32);
+  doc.setFont('helvetica','bold');
+  doc.text('CATÁLOGO',W/2,80,{align:'center'});
+  doc.setFontSize(16);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(0,185,107);
+  doc.text('DE PRODUCTOS',W/2,92,{align:'center'});
+
+  // Línea decorativa
+  doc.setDrawColor(0,185,107);
+  doc.setLineWidth(0.5);
+  doc.line(margin+20,102,W-margin-20,102);
+
+  // Fecha
+  doc.setTextColor(150,163,175);
+  doc.setFontSize(11);
+  const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const hoy=new Date();
+  doc.text(`${MESES[hoy.getMonth()]} ${hoy.getFullYear()}`,W/2,114,{align:'center'});
+
+  // Cantidad de productos
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(13);
+  doc.text(`${incluidos.length} producto${incluidos.length!==1?'s':''}`,W/2,128,{align:'center'});
+
+  // Línea inferior
+  doc.setFillColor(0,185,107);
+  doc.rect(0,294,W,3,'F');
+
+  // ── PÁGINAS DE PRODUCTOS ─────────────────
+  // 2 columnas, elegante
+  const colW=(W-margin*2-10)/2;
+  const cardH=72;
+  const cols=2;
+  let x=margin, y=0, col=0;
+
+  for(let i=0;i<incluidos.length;i++){
+    const p=incluidos[i];
+    if(i%2===0){
+      // Nueva página
+      doc.addPage();
+      // Fondo
+      doc.setFillColor(247,248,250);
+      doc.rect(0,0,W,297,'F');
+      // Header
+      doc.setFillColor(15,23,42);
+      doc.rect(0,0,W,14,'F');
+      doc.setFillColor(0,185,107);
+      doc.rect(0,13,W,1.5,'F');
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(8);
+      doc.setFont('helvetica','bold');
+      doc.text('CATÁLOGO DE PRODUCTOS',margin,9);
+      doc.setFont('helvetica','normal');
+      doc.setTextColor(0,185,107);
+      doc.text(`${hoy.getDate()}/${hoy.getMonth()+1}/${hoy.getFullYear()}`,W-margin,9,{align:'right'});
+      y=24; col=0; x=margin;
+    }
+
+    // Posición de la tarjeta
+    x=col===0?margin:margin+colW+10;
+
+    // Sombra (simulada con rect gris)
+    doc.setFillColor(220,225,230);
+    doc.roundedRect(x+1,y+1,colW,cardH,4,4,'F');
+
+    // Fondo tarjeta blanco
+    doc.setFillColor(255,255,255);
+    doc.roundedRect(x,y,colW,cardH,4,4,'F');
+
+    // Imagen del producto
+    const imgSize=40;
+    const imgX=x+6;
+    const imgY=y+6;
+    if(p.img&&p.img.startsWith('http')){
+      try {
+        // Intentar agregar imagen desde URL
+        doc.addImage(p.img,'JPEG',imgX,imgY,imgSize,imgSize,undefined,'FAST');
+      } catch(e){
+        // Si falla, mostrar placeholder
+        doc.setFillColor(240,243,246);
+        doc.roundedRect(imgX,imgY,imgSize,imgSize,3,3,'F');
+        doc.setTextColor(180,180,180);
+        doc.setFontSize(20);
+        doc.text('📦',imgX+imgSize/2,imgY+imgSize/2+4,{align:'center'});
+      }
+    } else {
+      doc.setFillColor(240,243,246);
+      doc.roundedRect(imgX,imgY,imgSize,imgSize,3,3,'F');
+      doc.setTextColor(180,180,180);
+      doc.setFontSize(8);
+      doc.text('Sin imagen',imgX+imgSize/2,imgY+imgSize/2,{align:'center'});
+    }
+
+    // Nombre del producto
+    const txtX=imgX+imgSize+6;
+    const txtW=colW-imgSize-18;
+    doc.setTextColor(26,29,35);
+    doc.setFontSize(9);
+    doc.setFont('helvetica','bold');
+    const nombre=doc.splitTextToSize(p.nombre,txtW);
+    doc.text(nombre,txtX,y+14);
+
+    // Descripción
+    if(p.desc){
+      doc.setFont('helvetica','normal');
+      doc.setTextColor(107,114,128);
+      doc.setFontSize(7.5);
+      const desc=doc.splitTextToSize(p.desc,txtW);
+      doc.text(desc.slice(0,2),txtX,y+14+(nombre.length*5));
+    }
+
+    // Stock
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(107,114,128);
+    doc.setFontSize(7.5);
+    doc.text(`Stock: ${p.stock} uds`,txtX,y+55);
+
+    // Precio — destacado con fondo verde
+    doc.setFillColor(0,185,107);
+    doc.roundedRect(x+6,y+cardH-16,colW-12,12,2,2,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica','bold');
+    doc.text(fmt(p.precio),x+colW/2,y+cardH-7,{align:'center'});
+
+    col++;
+    if(col>=cols){
+      col=0;
+      y+=cardH+10;
+    }
+  }
+
+  // ── PÁGINA FINAL ─────────────────────────
+  doc.addPage();
+  doc.setFillColor(15,23,42);
+  doc.rect(0,0,W,297,'F');
+  doc.setFillColor(0,185,107);
+  doc.rect(0,0,W,3,'F');
+  doc.rect(0,294,W,3,'F');
+  doc.setTextColor(0,185,107);
+  doc.setFontSize(14);
+  doc.setFont('helvetica','bold');
+  doc.text('¡Gracias por tu interés!',W/2,140,{align:'center'});
+  doc.setTextColor(150,163,175);
+  doc.setFontSize(10);
+  doc.setFont('helvetica','normal');
+  doc.text('Para cotizar o consultar disponibilidad,',W/2,154,{align:'center'});
+  doc.text('no dudes en contactarnos.',W/2,162,{align:'center'});
+
+  doc.save(`catalogo-${hoy.getDate()}-${hoy.getMonth()+1}-${hoy.getFullYear()}.pdf`);
+  toast('✅ PDF descargado');
+  document.getElementById('btnGenerarPDF').disabled=false;
+  document.getElementById('btnGenerarPDF').textContent='📄 Generar PDF';
 }
 
 cargarDatos();
